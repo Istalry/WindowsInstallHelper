@@ -102,8 +102,22 @@ class BatchInstaller:
             if filepath.lower().endswith(".msi"):
                 cmd = ["msiexec.exe", "/i", filepath, "/passive", "/norestart", f"INSTALLDIR={location}"]
             elif filepath.lower().endswith(".exe"):
-                # Most common args for InnoSetup/NSIS to set directory silently
-                cmd = [filepath, "/S", f"/D={location}"]
+                # Detect installer type by reading binary header
+                cmd = [filepath, "/S", f"/D={location}"] # Default fallback (NSIS style)
+                try:
+                    with open(filepath, 'rb') as f:
+                        header = f.read(1024 * 500) # Check first 500kb
+                        if b"Inno Setup" in header:
+                            cmd = [filepath, "/VERYSILENT", "/SUPPRESSMSGBOXES", "/NORESTART", f"/DIR={location}"]
+                            logger.debug(f"Detected InnoSetup for {name}")
+                        elif b"Nullsoft" in header or b"NSIS" in header:
+                            cmd = [filepath, "/S", f"/D={location}"]
+                            logger.debug(f"Detected NSIS for {name}")
+                        elif b"WiX" in header or b"wix" in header:
+                            cmd = [filepath, "/quiet", "-norestart"]
+                            logger.debug(f"Detected WiX for {name}")
+                except Exception as e:
+                    logger.warning(f"Could not read installer heuristics for {name}: {e}")
                 
             logger.debug(f"Executing command: {cmd}")
             process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NO_WINDOW)

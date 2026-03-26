@@ -65,17 +65,32 @@ class ImportView(ctk.CTkFrame):
             
         data = FileManager.import_json(filepath)
         if data:
+            self.current_json_path = filepath
+            state_filepath = f"{filepath}.state"
+            import os, json, string
+            state_data = {}
+            if os.path.exists(state_filepath):
+                try:
+                    with open(state_filepath, 'r', encoding='utf-8') as f:
+                        state_data = json.load(f)
+                except Exception:
+                    pass
+                    
             self.apps_to_install = []
-            import string
-            import os
             # Get default drive C:\ or similar
             drives = [f"{d}:\\" for d in string.ascii_uppercase if os.path.exists(f"{d}:\\")]
             default_drive = drives[0] if drives else "C:\\"
 
             for item in data:
                 app_entry = item.copy()
+                app_name = item['name']
                 app_entry['install_method'] = 'winget'
-                app_entry['winget_id'] = item['name'] 
+                if state_data.get(app_name) == "Success":
+                    app_entry['install_method'] = 'skip'
+                    app_entry['already_installed'] = True
+                else:
+                    app_entry['already_installed'] = False
+                app_entry['winget_id'] = app_name 
                 app_entry['local_path'] = ''
                 app_entry['install_drive'] = default_drive
                 self.apps_to_install.append(app_entry)
@@ -98,20 +113,32 @@ class ImportView(ctk.CTkFrame):
         self.status_label.configure(text="Scanning folder...")
         
         def _scan():
+            import difflib
             installers = FileManager.scan_for_installers(folder)
             linked_count = 0
             for app in self.apps_to_install:
+                if app.get('already_installed'):
+                    continue
+                    
                 app_name_lower = app['name'].lower()
-                # Better fuzzy matching: extract the first significant word (e.g., 'vlc' from 'vlc media player')
-                words = [w for w in app_name_lower.split() if w.isalnum() and len(w) >= 3]
-                significant_word = words[0] if words else app_name_lower[:5]
                 
-                for inst_name, inst_path in installers.items():
-                    if significant_word in inst_name:
-                        app['install_method'] = 'local'
-                        app['local_path'] = inst_path
-                        linked_count += 1
-                        break
+                # Use difflib for fuzzy matching
+                matches = difflib.get_close_matches(app_name_lower, installers.keys(), n=1, cutoff=0.5)
+                best_match = None
+                
+                if matches:
+                    best_match = matches[0]
+                else:
+                    # Fallback to rough substring match
+                    for inst_name in installers.keys():
+                        if app_name_lower in inst_name or inst_name in app_name_lower:
+                            best_match = inst_name
+                            break
+                            
+                if best_match:
+                    app['install_method'] = 'local'
+                    app['local_path'] = installers[best_match]
+                    linked_count += 1
                         
             self.after(0, lambda: self._on_scan_complete(linked_count))
             
@@ -162,7 +189,14 @@ class ImportView(ctk.CTkFrame):
                                        command=lambda idx=index: self._browse_local_file(idx))
             browse_btn.pack(side="left", padx=(0, 5))
             
-            status_icon_lbl = ctk.CTkLabel(frame, text="[Pending]", text_color="gray", width=80)
+            if app.get('already_installed'):
+                status_icon_lbl = ctk.CTkLabel(frame, text="[Already Installed]", text_color="#2FA572", width=120)
+                method_combo.configure(state="disabled")
+                drive_combo.configure(state="disabled")
+                browse_btn.configure(state="disabled")
+            else:
+                status_icon_lbl = ctk.CTkLabel(frame, text="[Pending]", text_color="gray", width=80)
+                
             status_icon_lbl.pack(side="right", padx=10)
             
             self.list_items.append(frame)
@@ -244,10 +278,28 @@ class ImportView(ctk.CTkFrame):
         def item_completion_callback(index, success, error_msg):
             # The 'index' from installer matches 'apps_to_run' index
             # We must map it back to the original index in apps_to_install
-            actual_index = self.apps_to_install.index(apps_to_run[index])
+            app_installed = apps_to_run[index]
+            actual_index = self.apps_to_install.index(app_installed)
             text = "[Success]" if success else f"[{error_msg}]"
             color = "#2FA572" if success else "#D14848"
             self.after(0, lambda i=actual_index, t=text, c=color: self._update_item_icon(i, t, c))
+            
+            if success and hasattr(self, 'current_json_path'):
+                state_filepath = f"{self.current_json_path}.state"
+                import os, json
+                state_data = {}
+                if os.path.exists(state_filepath):
+                    try:
+                        with open(state_filepath, 'r', encoding='utf-8') as f:
+                            state_data = json.load(f)
+                    except Exception:
+                        pass
+                state_data[app_installed['name']] = "Success"
+                try:
+                    with open(state_filepath, 'w', encoding='utf-8') as f:
+                        json.dump(state_data, f, ensure_ascii=False)
+                except Exception:
+                    pass
             
         self.installer.run_batch(apps_to_run, progress_callback, item_completion_callback)
         self.after(0, self._on_installation_complete)

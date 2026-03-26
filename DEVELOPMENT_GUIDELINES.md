@@ -14,3 +14,5 @@
 *   **Journalisation (Logging) :** Remplacement des `print()` par l'utilisation du module `logging`. Génération d'un fichier `migration_tool.log` dans le dossier temporaire pour débugger au besoin.
 *   **Documentation (Docstrings) :** Chaque classe et méthode publique doit posséder une docstring claire expliquant son rôle, ses arguments et ses retours.
 *   **UI Asynchrone (Crucial) :** Les opérations longues (scan, installations) doivent impérativement être exécutées dans des threads séparés (via le module `threading`). Le fil d'exécution principal (Main Thread) sera réservé à la mise à jour de l'interface CustomTkinter (notamment les barres de progression).
+*   **Historique et Reprise :** Les succès d'installation sont marqués dans un fichier adjascent `.state` au format JSON. Ne modifiez jamais le fichier source importé (`export.json` original).
+*   **Modules Standards Préférés :** Pour limiter les dépendances et garantir la portabilité, privilégiez les modules standards Python (`ctypes`, `difflib`, `winreg`) plutôt que de télécharger des packages externes lourds.
