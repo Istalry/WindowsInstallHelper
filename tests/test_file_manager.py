@@ -75,3 +75,12 @@ def test_scan_for_installers_invalid_dir(tmp_path):
     invalid_dir = str(tmp_path / "does_not_exist")
     result = FileManager.scan_for_installers(invalid_dir)
     assert result == {}
+
+from unittest.mock import patch
+
+@patch('pathlib.Path.iterdir')
+def test_scan_for_installers_exception(mock_iterdir, tmp_path):
+    """Verify scan_for_installers catches and logs OS Exceptions."""
+    mock_iterdir.side_effect = Exception("OS Permission Error")
+    result = FileManager.scan_for_installers(str(tmp_path))
+    assert result == {}

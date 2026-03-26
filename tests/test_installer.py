@@ -131,3 +131,70 @@ def test_install_local_msi(mock_popen, installer):
     assert "/i" in cmd_args
     assert "C:\\test.msi" in cmd_args
     assert "INSTALLDIR=D:\\InstallDir" in cmd_args
+
+@patch('migration_tool.core.installer.WingetAPI.install')
+def test_run_batch_missing_info(mock_install, installer):
+    """Verify run_batch handles missing winget_id or local_path."""
+    mock_install.return_value = True
+    
+    apps = [
+        {"name": "App1", "install_method": "winget"}, # missing winget_id
+        {"name": "App2", "install_method": "local"},  # missing local_path
+        {"name": "App3", "install_method": "unknown_method"} # Invalid method
+    ]
+    callback = MagicMock()
+    
+    with patch('migration_tool.core.installer.logger') as mock_log:
+        installer.run_batch(apps, progress_callback=callback)
+        assert mock_install.call_count == 0
+        assert mock_log.error.call_count >= 2
+        
+@patch('subprocess.Popen')
+def test_install_local_exception(mock_popen, installer):
+    """Verify _install_local catches Popen exceptions."""
+    mock_popen.side_effect = Exception("Process Error")
+    
+    result = installer._install_local("TestApp", "C:\\test.exe", "D:\\InstallDir")
+    
+    assert result is False
+
+from unittest.mock import mock_open
+
+@patch('subprocess.Popen')
+def test_install_local_exe_heuristics_inno(mock_popen, installer):
+    mock_process = MagicMock()
+    mock_process.returncode = 0
+    mock_popen.return_value = mock_process
+    
+    with patch('builtins.open', mock_open(read_data=b"Some binary junk Inno Setup ...")):
+        result = installer._install_local("TestApp", "C:\\test.exe", "D:\\InstallDir")
+        
+    assert result is True
+    cmd_args = mock_popen.call_args[0][0]
+    assert cmd_args[1] == "/VERYSILENT"
+
+@patch('subprocess.Popen')
+def test_install_local_exe_heuristics_nsis(mock_popen, installer):
+    mock_process = MagicMock()
+    mock_process.returncode = 0
+    mock_popen.return_value = mock_process
+    
+    with patch('builtins.open', mock_open(read_data=b"Nullsoft Install System")):
+        result = installer._install_local("TestNSIS", "C:\\test2.exe", "D:\\InstallDir")
+        
+    assert result is True
+    cmd_args = mock_popen.call_args[0][0]
+    assert cmd_args[1] == "/S"
+
+@patch('subprocess.Popen')
+def test_install_local_exe_heuristics_wix(mock_popen, installer):
+    mock_process = MagicMock()
+    mock_process.returncode = 0
+    mock_popen.return_value = mock_process
+    
+    with patch('builtins.open', mock_open(read_data=b"WiX Toolset")):
+        result = installer._install_local("TestWiX", "C:\\test3.exe", "D:\\InstallDir")
+        
+    assert result is True
+    cmd_args = mock_popen.call_args[0][0]
+    assert cmd_args[1] == "/quiet"

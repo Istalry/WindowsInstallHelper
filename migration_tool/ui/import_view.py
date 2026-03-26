@@ -179,10 +179,16 @@ class ImportView(ctk.CTkFrame):
                                            command=lambda val, idx=index: self._update_drive(idx, val))
             drive_combo.pack(side="left", padx=5)
             
-            path_text = app.get('local_path', '')
-            if path_text and len(path_text) > 25:
-                path_text = "..." + path_text[-22:]
-            path_lbl = ctk.CTkLabel(frame, text=path_text, text_color="gray", width=180, anchor="w")
+            if app.get('install_method') == 'winget' and 'winget_status_text' in app:
+                path_text = app['winget_status_text']
+                text_color = "#D14848" if app.get('winget_status_error') else "#2FA572"
+            else:
+                path_text = app.get('local_path', '')
+                if path_text and len(path_text) > 25:
+                    path_text = "..." + path_text[-22:]
+                text_color = "#2FA572" if path_text else "gray"
+                
+            path_lbl = ctk.CTkLabel(frame, text=path_text, text_color=text_color, width=180, anchor="w")
             path_lbl.pack(side="left", padx=5)
             
             browse_btn = ctk.CTkButton(frame, text="...", width=30, 
@@ -220,6 +226,8 @@ class ImportView(ctk.CTkFrame):
 
     def _update_row_status(self, index, text, error=False):
         try:
+            self.apps_to_install[index]['winget_status_text'] = text
+            self.apps_to_install[index]['winget_status_error'] = error
             if hasattr(self, 'row_widgets') and index < len(self.row_widgets):
                 widgets = self.row_widgets[index]
                 widgets['status_lbl'].configure(text=text[:40], text_color="#D14848" if error else "#2FA572")
@@ -248,7 +256,7 @@ class ImportView(ctk.CTkFrame):
                 widgets = self.row_widgets[index]
                 widgets['method_var'].set('local')
                 display_path = filepath if len(filepath) <= 25 else "..." + filepath[-22:]
-                widgets['status_lbl'].configure(text=display_path)
+                widgets['status_lbl'].configure(text=display_path, text_color="#2FA572")
         
     def start_installation(self):
         self.install_btn.configure(state="disabled")

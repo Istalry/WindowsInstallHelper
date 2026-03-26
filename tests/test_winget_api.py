@@ -77,3 +77,9 @@ def test_install_failure(mock_run):
     
     success = WingetAPI.install("Mozilla.Firefox")
     assert success is False
+
+@patch('subprocess.run')
+def test_exceptions_caught(mock_run):
+    mock_run.side_effect = Exception("OS Error")
+    assert WingetAPI.search("app") is None
+    assert WingetAPI.install("id") is False
