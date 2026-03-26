@@ -22,6 +22,7 @@ class BatchInstaller:
     def run_batch(self, 
                   apps: List[Dict[str, Any]], 
                   progress_callback: Callable[[int, int, str], None],
+                  item_completion_callback: Callable[[int, bool, str], None] = None,
                   location: str = None) -> None:
         """
         Iterates over the list of apps and installs them.
@@ -33,6 +34,7 @@ class BatchInstaller:
                          - 'winget_id': (optional) ID if method is winget
                          - 'local_path': (optional) Path if method is local
             progress_callback (callable): Function to update UI (current, total, status_text).
+            item_completion_callback (callable, optional): Function to notify UI of individual app success/failure (index, success, error_msg).
             location (str, optional): Target installation drive/folder.
         """
         total = len(apps)
@@ -75,8 +77,12 @@ class BatchInstaller:
                 
             if not success:
                 logger.error(f"Failed to install {name}.")
+                if item_completion_callback:
+                    item_completion_callback(index, False, "Failed")
             else:
                 logger.info(f"Finished processing {name}.")
+                if item_completion_callback:
+                    item_completion_callback(index, True, "Success")
                 
             # Keep UI responsive and don't spam subprocesses too quickly
             time.sleep(1)

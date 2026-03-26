@@ -158,8 +158,19 @@ class ImportView(ctk.CTkFrame):
             path_lbl = ctk.CTkLabel(frame, text=path_text, text_color="gray", width=180, anchor="w")
             path_lbl.pack(side="left", padx=5)
             
+            browse_btn = ctk.CTkButton(frame, text="...", width=30, 
+                                       command=lambda idx=index: self._browse_local_file(idx))
+            browse_btn.pack(side="left", padx=(0, 5))
+            
+            status_icon_lbl = ctk.CTkLabel(frame, text="[Pending]", text_color="gray", width=80)
+            status_icon_lbl.pack(side="right", padx=10)
+            
             self.list_items.append(frame)
-            self.row_widgets.append({'method_var': method_var, 'status_lbl': path_lbl})
+            self.row_widgets.append({
+                'method_var': method_var, 
+                'status_lbl': path_lbl,
+                'status_icon_lbl': status_icon_lbl
+            })
 
     def _verify_winget_apps(self):
         from ..core.winget_api import WingetAPI
@@ -190,6 +201,21 @@ class ImportView(ctk.CTkFrame):
     def _update_method(self, index, new_method):
         self.apps_to_install[index]['install_method'] = new_method
         
+    def _browse_local_file(self, index):
+        filepath = ctk.filedialog.askopenfilename(
+            title=f"Select installer for {self.apps_to_install[index]['name']}",
+            filetypes=[("Executables", "*.exe;*.msi"), ("All Files", "*.*")]
+        )
+        if filepath:
+            self.apps_to_install[index]['local_path'] = filepath
+            self.apps_to_install[index]['install_method'] = 'local'
+            # Update UI to reflect changes immediately
+            if hasattr(self, 'row_widgets') and index < len(self.row_widgets):
+                widgets = self.row_widgets[index]
+                widgets['method_var'].set('local')
+                display_path = filepath if len(filepath) <= 25 else "..." + filepath[-22:]
+                widgets['status_lbl'].configure(text=display_path)
+        
     def start_installation(self):
         self.install_btn.configure(state="disabled")
         self.load_btn.configure(state="disabled")
@@ -210,9 +236,28 @@ class ImportView(ctk.CTkFrame):
     def _run_installation(self, apps_to_run):
         def progress_callback(current, total, text):
             self.after(0, lambda: self._update_progress(current, total, text))
+            if current < total:
+                # Set current item to "Installing"
+                idx = self.apps_to_install.index(apps_to_run[current])
+                self.after(0, lambda i=idx: self._update_item_icon(i, "[Installing...]", "#3B8ED0"))
+                
+        def item_completion_callback(index, success, error_msg):
+            # The 'index' from installer matches 'apps_to_run' index
+            # We must map it back to the original index in apps_to_install
+            actual_index = self.apps_to_install.index(apps_to_run[index])
+            text = "[Success]" if success else f"[{error_msg}]"
+            color = "#2FA572" if success else "#D14848"
+            self.after(0, lambda i=actual_index, t=text, c=color: self._update_item_icon(i, t, c))
             
-        self.installer.run_batch(apps_to_run, progress_callback)
+        self.installer.run_batch(apps_to_run, progress_callback, item_completion_callback)
         self.after(0, self._on_installation_complete)
+        
+    def _update_item_icon(self, index, text, color):
+        try:
+            if hasattr(self, 'row_widgets') and index < len(self.row_widgets):
+                self.row_widgets[index]['status_icon_lbl'].configure(text=text, text_color=color)
+        except Exception:
+            pass
         
     def _update_progress(self, current, total, text):
         if total > 0:
